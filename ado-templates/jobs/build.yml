@@ -1,0 +1,54 @@
+parameters:
+  - name: awsServiceConnection
+    type: string
+    default: ''
+
+jobs:
+  - job: building
+    displayName: Build
+    steps:
+    - task: NodeTool@0
+      displayName: Install Node
+      inputs:
+        versionSpec: '14.x'
+
+    - task: Npm@1
+      displayName: Install Dependencies
+      inputs:
+        command: ci
+
+    - task: Npm@1
+      displayName: Build
+      inputs:
+        command: custom
+        customCommand: run build
+
+    - task: AWSShellScript@1
+      inputs:
+        awsCredentials: ${{ parameters.awsServiceConnection }}
+        scriptType: inline
+        inlineScript: |
+          sam validate --template-file microservice.sam.yml --region $(awsRegion)
+      displayName: Validate SAM template
+
+    - task: AWSShellScript@1
+      inputs:
+        awsCredentials: AWS-JacobSood
+        regionName: $(awsRegion)
+        scriptType: inline
+        inlineScript: |
+          mkdir -p build/output
+          aws cloudformation package \
+            --s3-bucket $(serviceName)-$(environment) \
+            --template-file microservice.sam.yml \
+            --output-template-file build/output/package.yml \
+            --s3-prefix build-artifacts/$(Build.SourceBranchName)/$(Build.SourceVersion)
+      displayName: Package SAM artifact
+
+    - publish: build/output/package.yml
+      displayName: Publish the CFN Template for Deployment
+      artifact: cfn_template
+
+    - publish: dist
+      displayName: Publish the WebApp Artifact for Deployment
+      artifact: WebApp

@@ -1,0 +1,29 @@
+parameters:
+  - name: awsServiceConnection
+    type: string
+    default: ''
+
+jobs:
+- job: deploying
+  displayName: Deploy
+  steps:
+  - task: awsTokenBroker@1
+    inputs:
+      serviceConnection: ${{ parameters.awsServiceConnection }}
+      roleName: $(awsRoleName)
+      region: $(awsRegion)
+    displayName: Hello AWS
+
+  - bash: |
+      aws cloudformation deploy \
+        --template-file microservice.sam.monitoring.yml \
+        --stack-name braintree-adapter-$(Build.SourceBranchName)-monitoring \
+        --parameter-overrides \
+          paramEnvironment=$(environment) \
+          paramFeatureBranch=$(Build.SourceBranchName) \
+          paramP90AlertThreshold=$(awsP90AlertThreshold) \
+          paramP95AlertThreshold=$(awsP95AlertThreshold) \
+          paramP99AlertThreshold=$(awsP99AlertThreshold) \
+          param5xxAlertThreshold=$(aws5xxAlertThreshold) \
+        --capabilities CAPABILITY_NAMED_IAM
+    displayName: "Deploy to $(environment): braintree-adapter-$(Build.SourceBranchName)"

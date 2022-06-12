@@ -1,0 +1,49 @@
+parameters:
+  - name: awsServiceConnection
+    type: string
+    default: ''
+  - name: serviceDir
+    type: string
+    default: $(System.DefaultWorkingDirectory)
+
+jobs:
+  - job: apitests
+    displayName: API Tests
+    timeoutInMinutes: 15
+    steps:
+      - task: NodeTool@0
+        displayName: Install Node
+        inputs:
+          versionSpec: '14.x'
+
+      - task: Npm@1
+        displayName: Install Dependencies
+        inputs:
+          command: ci
+
+      - task: awsTokenBroker@1
+        inputs:
+          serviceConnection: ${{ parameters.awsServiceConnection }}
+          roleName: $(awsRoleName)
+          region: $(awsRegion)
+        displayName: Hello AWS
+
+      - task: Npm@1
+        displayName: "Run API tests: $(Build.SourceBranchName)"
+        inputs:
+          command: custom
+          customCommand: run test:api:ci:$(environment) $(Build.SourceBranchName)
+
+      - ${{ if eq(variables['Build.SourceBranchName'], 'main') }}:
+        - task: PublishTestResults@2
+          displayName: Publish API Test Results to Pipeline
+          inputs:
+            testRunTitle: api-tests
+            testResultsFiles: '${{ parameters.serviceDir }}/reports/$(environment)-api-test-report.xml'
+            failTaskOnFailedTests: true
+
+        - task: PublishPipelineArtifact@1
+          displayName: "Publish Artifact api-test-report.xml"
+          inputs:
+            targetPath: '${{ parameters.serviceDir }}/reports/$(environment)-api-test-report.xml'
+            artifactName: ApiTestReport$(environment)

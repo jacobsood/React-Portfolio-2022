@@ -1,0 +1,322 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Sam Template for {Service-Name}
+Parameters:
+  paramEnvironment:
+    Type: String
+    Description: Which environment do you want to deploy to? (local, dev, staging, integration or prod)
+    AllowedValues:
+    - local
+    - dev
+    - staging
+    - integration
+    - prod
+    Default: local
+  paramAwsAccount:
+    Type: String
+    Description: Provide the account id of the linked aws profile
+    Default: "162632054455"
+  paramFeatureBranch:
+    Type: String
+    Description: Provide the name of the branch of this build.
+    Default: "main"
+  paramBuildVersion:
+    Type: String
+    Description: Provide the version of this build.
+    Default: ""
+  paramBuildNumber:
+    Type: String
+    Description: Provide the number of this build.
+    Default: ""
+  paramServiceName:
+    Type: String
+    Description: The name of the service
+    Default: serverless-service-name
+  paramDefaultRootObject:
+    Type: String
+    Description: The name of the index document for the website
+    Default: "/index.html"
+  paramErrorCachingMinTTL:
+    Type: Number
+    Description: The error caching TTL
+    Default: 86400
+  paramReleaseVersion:
+    Type: String
+    Description: The Release Version number
+    Default: 0.0.1
+  paramLogRetention:
+    Type: Number
+    Description: Number of days to keep logs
+    Default: 30
+  paramSubnetIdA:
+    Type: String
+    Description: VPC Subnet Id A
+    Default: ""
+  paramSubnetIdB:
+    Type: String
+    Description: VPC Subnet Id B
+    Default: ""
+  paramSubnetIdC:
+    Type: String
+    Description: VPC Subnet Id C
+    Default: ""
+
+Mappings:
+  # SETUP: Customize your microservice with environment-specific configuration in this section
+  # The mappings section doesn't fully support Intrinsic functions like !Ref or !Sub
+  # so values here need to be hard-coded instead of based on parameters.
+  env:
+    dev:
+      highMemorySize: '512'
+    staging:
+      highMemorySize: '512'
+    integration:
+      highMemorySize: '1024'
+    prod:
+      highMemorySize: '1024'
+    local:
+      highMemorySize: '512'
+      # awsResourceEndPoint: "" # Check your localstack docker container IP by running docker inspect --format='{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' <InstanceId>
+
+Conditions:
+  conditionIsLocal: !Equals [ !Ref paramEnvironment, "local" ]
+  conditionIsMainBranch: !Equals [!Ref paramFeatureBranch, "main" ]
+  conditionIsIntegration: !Equals [ !Ref paramEnvironment, "integration" ]
+  conditionIsProd: !Equals [ !Ref paramEnvironment, "prod" ]
+  conditionIsProdLike: !Or [ !Condition conditionIsIntegration, !Condition conditionIsProd ]
+  conditionIsIntOrHigher: !Or [ !Condition conditionIsIntegration, !Condition conditionIsProd ]
+
+Globals:
+  Function:
+    # Properties of AWS::Serverless::Function
+    Handler: handler.handler
+    Runtime: nodejs14.x
+    MemorySize: 512
+    Timeout: 28
+    Environment:
+      Variables:
+        #environment settings
+        serviceName: !Ref paramServiceName
+        environmentName: !Ref paramEnvironment
+        branchName: !Ref paramFeatureBranch
+        buildNumber: !Ref paramBuildNumber
+        buildVersion: !Ref paramBuildVersion
+        releaseVersion: !Ref paramReleaseVersion
+        logLevel: info
+        loggingModule: "{service.name}"
+        awsRegion: !Ref AWS::Region
+        awsAccountId: !If [ conditionIsLocal, !Ref paramAwsAccount, !Ref AWS::AccountId ]
+        awsResourceEndPoint: "" # This doesn't work - worry about it later !If [ conditionIsLocal, !FindInMap [env, !Ref paramEnvironment, awsResourceEndPoint], "" ]
+
+        # aws resources
+#        dbUserJourneyTable: !Ref resSomeTable
+        cloudfrontDistributionDomain: !Sub "https://${resCloudFrontDistribution.DomainName}"
+
+        # connection reuse
+        AWS_NODEJS_CONNECTION_REUSE_ENABLED: 1
+
+    Tags:
+      Application: !Ref paramServiceName
+      Environment: !Ref paramEnvironment
+    Tracing: !If # Turn on X-Ray Tracing for Prod only
+      - conditionIsLocal
+      - !Ref AWS::NoValue
+      - Active
+    AutoPublishAlias: live
+
+Resources:
+  resIamRoleLambdaExecution:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: [lambda.amazonaws.com]
+            Action: sts:AssumeRole
+      Path: /
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaRole
+        - arn:aws:iam::aws:policy/CloudWatchLogsFullAccess
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaSQSQueueExecutionRole
+        - arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess
+        - arn:aws:iam::aws:policy/AmazonSQSFullAccess
+#      Policies:
+#        - PolicyName: DynamoDBTableCRUD
+#          PolicyDocument:
+#            Version: 2012-10-17
+#            Statement:
+#              Effect: Allow
+#              Action:
+#                - dynamodb:GetItem
+#                - dynamodb:PutItem
+#                - dynamodb:UpdateItem
+#                - dynamodb:BatchWriteItem
+#                - dynamodb:BatchGetItem
+#              Resource:
+#                - !GetAtt resSomeTable.Arn
+
+  # S3 Website
+  resWebappS3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub
+        - "${prefix}-${paramServiceName}-webapp"
+        - prefix: !If [ conditionIsMainBranch, !Ref paramEnvironment, !Ref paramFeatureBranch ]
+
+  resWebappS3BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref resWebappS3Bucket
+      PolicyDocument:
+        Statement:
+          - Action: s3:GetObject
+            Effect: Allow
+            Resource: !Sub "arn:aws:s3:::${resWebappS3Bucket}/*"
+            Principal:
+              CanonicalUser: !GetAtt resCloudFrontOriginAccessIdentity.S3CanonicalUserId
+
+  resCloudFrontOriginAccessIdentity:
+    Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+    Properties:
+      CloudFrontOriginAccessIdentityConfig:
+        Comment: !Sub
+          - "${prefix}-${paramServiceName}"
+          - prefix: !If [ conditionIsMainBranch, !Ref paramEnvironment, !Ref paramFeatureBranch ]
+
+  resCloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        DefaultCacheBehavior:
+          AllowedMethods:
+          - GET
+          - HEAD
+          - OPTIONS
+          CachedMethods:
+          - GET
+          - HEAD
+          - OPTIONS
+          Compress: true
+          ForwardedValues:
+            Cookies:
+              Forward: none
+            QueryString: false
+          TargetOriginId: s3origin
+          ViewerProtocolPolicy: redirect-to-https
+        Origins:
+          - DomainName: !GetAtt resWebappS3Bucket.RegionalDomainName
+            Id: s3origin
+            S3OriginConfig:
+              OriginAccessIdentity: !Sub "origin-access-identity/cloudfront/${resCloudFrontOriginAccessIdentity}"
+        Enabled: true
+        Comment: !Sub
+          - "${prefix}-${paramServiceName}"
+          - prefix: !If [ conditionIsMainBranch, !Ref paramEnvironment, !Ref paramFeatureBranch ]
+        DefaultRootObject: index.html
+        CustomErrorResponses:
+          - ErrorCode: 403
+            ErrorCachingMinTTL: !Ref paramErrorCachingMinTTL
+            ResponseCode: 200
+            ResponsePagePath: !Ref paramDefaultRootObject
+          - ErrorCode: 404
+            ErrorCachingMinTTL: !Ref paramErrorCachingMinTTL
+            ResponseCode: 200
+            ResponsePagePath: !Ref paramDefaultRootObject
+
+#  resHealthCheckFunction:
+#    Type: AWS::Serverless::Function
+#    Properties:
+#      FunctionName: !Sub
+#        - "${prefix}-${paramServiceName}-healthCheckHandler"
+#        - prefix: !If [ conditionIsMainBranch, !Ref paramEnvironment, !Ref paramFeatureBranch ]
+#      CodeUri: dist/backend/healthCheckHandler
+#      Role: !GetAtt resIamRoleLambdaExecution.Arn
+#      Events:
+#        api:
+#          Type: Api
+#          Properties:
+#            RestApiId: !Ref resApiGateway
+#            Path: /gateway/health
+#            Method: GET
+
+#  resSomeTable:
+#    Type: AWS::DynamoDB::Table
+#    Properties:
+#      TableName: !Sub
+#        - "${prefix}-${paramServiceName}-dbUserJourneyTable"
+#        - prefix: !If [ conditionIsMainBranch, !Ref paramEnvironment, !Ref paramFeatureBranch ]
+#      BillingMode: PAY_PER_REQUEST
+#      AttributeDefinitions:
+#        - AttributeName: pk_name
+#          AttributeType: S
+#      KeySchema:
+#        - AttributeName: pk_name
+#          KeyType: HASH
+#      PointInTimeRecoverySpecification:
+#        PointInTimeRecoveryEnabled: False
+#      SSESpecification:
+#        SSEEnabled: True
+#      Tags:
+#        - Key: Application
+#          Value: !Ref paramServiceName
+#        - Key: Environment
+#          Value: !Ref paramEnvironment
+
+#  resApiGateway:
+#    Type: AWS::Serverless::Api
+#    Properties:
+#      Name: !Sub "${paramEnvironment} ${paramServiceName} ${paramFeatureBranch}"
+#      StageName: !Ref paramEnvironment
+#      Auth:
+#        ResourcePolicy:
+#          CustomStatements: {
+#            "Effect": "Allow",
+#            "Principal": "*",
+#            "Action": "execute-api:Invoke",
+#            "Resource": "execute-api:/*/*/*",
+#          }
+
+  # Log Groups
+#  resApiGatewayAccessLogGroup:
+#    Type: AWS::Logs::LogGroup
+#    Properties:
+#      RetentionInDays: !Ref paramLogRetention
+#      # The Access Log location can be any log group you want. Choose your preferred log group name.
+#      LogGroupName: !If
+#        - conditionIsMainBranch
+#        - !Sub "/aws/apigateway/accesslogs/${paramServiceName}/${paramEnvironment}"
+#        - !Sub "/aws/apigateway/accesslogs/${paramServiceName}/${paramEnvironment}/branch/${paramFeatureBranch}"
+#
+#  resApiGatewayExecutionLogGroup:
+#    Type: AWS::Logs::LogGroup
+#    Properties:
+#      RetentionInDays: !Ref paramLogRetention
+#      # The Execution Log location cannot be customized. It must be this exact LogGroupName
+#      LogGroupName: !Sub "API-Gateway-Execution-Logs_${resApiGateway}/${paramEnvironment}"
+#
+#  resHealthCheckFunctionLogGroup:
+#    Type: AWS::Logs::LogGroup
+#    Properties:
+#      RetentionInDays: !Ref paramLogRetention
+#      LogGroupName: !Sub "/aws/lambda/${resHealthCheckFunction}"
+#
+#  resHealthCheckFunctionSubscriptionFilter:
+#    Type: AWS::Logs::SubscriptionFilter
+#    Condition: conditionIsIntOrHigher
+#    Properties:
+#      LogGroupName: !Ref resHealthCheckFunctionLogGroup
+#      FilterPattern: ""
+#      DestinationArn: !FindInMap [ env, !Ref paramEnvironment, centralLoggingStream ]
+
+Outputs:
+#  ApiId:
+#    Description: Unique REST API identifier
+#    Value: !Ref resApiGateway
+#  ApiUrl:
+#    Description: API base URL
+#    Value: !Sub "https://${resApiGateway}.execute-api.${AWS::Region}.amazonaws.com/${paramEnvironment}"
+  WebappUrl:
+    Description: Static website URL
+    Value: !Sub "https://${resCloudFrontDistribution.DomainName}"

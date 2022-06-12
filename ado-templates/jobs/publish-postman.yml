@@ -1,0 +1,39 @@
+
+jobs:
+  - job: postman
+    displayName: Publishing Postman
+
+    steps:
+      - checkout: QaPostmanRepo
+        persistCredentials: true
+        clean: true
+
+      - task: DownloadPipelineArtifact@2
+        displayName: Download Postman collection Artifacts
+        inputs:
+          artifact: PostmanCollection
+          path:  $(Build.SourcesDirectory)/adapters/braintree
+
+      - script: |
+          mkdir -p braintree
+        displayName: Create directory
+        workingDirectory: $(Build.SourcesDirectory)/adapters
+
+      - script: |
+          ls
+        displayName: Show Files
+        workingDirectory: $(Build.SourcesDirectory)/adapters/braintree
+
+      - script: |
+          git add adapters/braintree
+          echo "Setup git config"
+          git config user.email $(Build.RequestedForEmail)
+          git config user.name "$(Build.RequestedFor)"
+          git status
+          git commit -m "Updated Braintree AU Adapter POSTMAN Collection: Commit #$(Build.SourceVersion)"
+          echo "git push"
+          git push origin HEAD:main --force
+          echo "Updated Braintree adapter postman collection"
+        displayName: Commit and Push changes
+        workingDirectory: $(Build.SourcesDirectory)
+        condition: and(succeeded(), eq(variables['build.sourceBranch'], 'refs/heads/main'))

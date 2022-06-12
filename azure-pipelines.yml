@@ -1,0 +1,35 @@
+pool:
+  vmImage: ubuntu-latest
+
+pr:
+  autoCancel: true
+  branches:
+    include:
+      - main
+
+stages:
+  - ${{ if ne(variables['Build.Reason'], 'PullRequest') }}:
+    - template: ado-templates/stages/unit-tests.yml
+
+    - ${{ if eq(variables['Build.SourceBranchName'], 'main') }}:
+      - stage: buildprod
+        dependsOn: []
+        displayName: Build Production
+        variables:
+          - template: ado-vars/prod.yml
+        jobs:
+          - template: ado-templates/jobs/build.yml
+            parameters:
+              awsServiceConnection: AWS-JacobSood
+
+      - stage: deployprod
+        dependsOn:
+          - buildprod
+          - unit_tests
+        displayName: Deploy Production
+        variables:
+          - template: ado-vars/prod.yml
+        jobs:
+          - template: ado-templates/jobs/deploy.yml
+            parameters:
+              awsServiceConnection: AWS-JacobSood

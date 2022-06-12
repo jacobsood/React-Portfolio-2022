@@ -1,0 +1,15 @@
+variables:
+  environment: staging
+  serviceName: service_name
+  awsRoleName: aws_role_name
+  awsPrefix: aws_prefix
+  awsRegion: ap-southeast-2
+  awsProvisionedConcurrencyLow: 1
+  awsProvisionedConcurrencyHigh: 1
+  awsProvisionedConcurrencyMaxCapacity: 1
+  awsHasProvisionedConcurrencyEnabled: true
+  awsApiGatewayPublic: true
+  awsP90AlertThreshold: 5500
+  awsP95AlertThreshold: 7000
+  awsP99AlertThreshold: 10000
+  aws5xxAlertThreshold: 100

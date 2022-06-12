@@ -1,0 +1,45 @@
+parameters:
+  - name: awsServiceConnection
+    type: string
+    default: ''
+
+jobs:
+- job: deploying
+  displayName: Deploy
+  steps:
+  - download: current
+    displayName: Download the CFN Template Artifact
+    artifact: cfn_template
+
+  - task: AWSShellScript@1
+    inputs:
+      awsCredentials: ${{ parameters.awsServiceConnection }}
+      regionName: $(awsRegion)
+      scriptType: inline
+      inlineScript: |
+        aws cloudformation deploy \
+          --template-file "$(Pipeline.Workspace)/cfn_template/package.yml" \
+          --stack-name $(serviceName)-$(Build.SourceBranchName) \
+          --parameter-overrides \
+            paramEnvironment=$(environment) \
+            paramAccountPrefix=$(awsPrefix) \
+            paramFeatureBranch=$(Build.SourceBranchName) \
+            paramApiGatewayPublic=$(awsApiGatewayPublic) \
+            paramBuildNumber=$(Build.BuildNumber) \
+            paramBuildVersion=$(Build.BuildId) \
+          --capabilities CAPABILITY_NAMED_IAM
+    displayName: "Deploy to $(environment): $(serviceName)-$(Build.SourceBranchName)"
+
+  - download: current
+    displayName: Download the WebApp Artifact
+    artifact: WebApp
+
+  - task: AWSShellScript@1
+    inputs:
+      awsCredentials: ${{ parameters.awsServiceConnection }}
+      regionName: $(awsRegion)
+      scriptType: inline
+      inlineScript: |
+        aws s3 cp "$(Pipeline.Workspace)/WebApp" "s3://$(environment)-$(serviceName)-webapp" --recursive
+    displayName: Deploy the WebApp Artifact to S3 Bucket
+

@@ -1,0 +1,24 @@
+{
+  "compileOnSave": false,
+  "compilerOptions": {
+    "jsx": "react-jsx", // What JSX code is generated
+    "baseUrl": "./", // Base directory to resolve non-relative module names
+    "declaration": false,
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "resolveJsonModule": true, // Enable importing .json files
+    "module": "commonjs", // Specify what module code is generated
+    "moduleResolution": "node",
+    "sourceMap": true, // Create source map files for emitted JavaScript
+    "target": "ESNext", // JavaScript version for emitted JavaScript
+    "esModuleInterop": true, // Emit additional JavaScript to ease support for importing CommonJS Modules
+    "lib": [
+      "ESNext",
+      "dom"
+    ],
+    "strict": true, // Enable all struct type-checking options
+    "forceConsistentCasingInFileNames": true, // Ensure casing is correct in imports
+    "isolatedModules": true, // Ensure each file can be transpiled without relying on other imports
+    "outDir": "./dist/" // Output folder for emitted files
+  }
+}

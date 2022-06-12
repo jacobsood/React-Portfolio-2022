@@ -1,0 +1,11 @@
+variables:
+  environment: dev
+  serviceName: service_name
+  awsPrefix: aws_prefix
+  awsRoleName: aws_role_name
+  awsRegion: ap-southeast-2
+  awsProvisionedConcurrencyLow: 0
+  awsProvisionedConcurrencyHigh: 0
+  awsProvisionedConcurrencyMaxCapacity: 1
+  awsHasProvisionedConcurrencyEnabled: ''
+  awsApiGatewayPublic: true
