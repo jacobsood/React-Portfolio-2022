@@ -1,6 +1,6 @@
 variables:
   environment: staging
-  serviceName: service_name
+  serviceName: hrithviksood.me
   awsRoleName: aws_role_name
   awsPrefix: aws_prefix
   awsRegion: ap-southeast-2

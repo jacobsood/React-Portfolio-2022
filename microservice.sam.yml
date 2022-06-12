@@ -31,7 +31,7 @@ Parameters:
   paramServiceName:
     Type: String
     Description: The name of the service
-    Default: serverless-service-name
+    Default: hrithviksood.me
   paramDefaultRootObject:
     Type: String
     Description: The name of the index document for the website

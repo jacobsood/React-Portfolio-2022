@@ -17,9 +17,10 @@ jobs:
       regionName: $(awsRegion)
       scriptType: inline
       inlineScript: |
+        STACK_NAME=$(echo $(serviceName) | tr . -)
         aws cloudformation deploy \
           --template-file "$(Pipeline.Workspace)/cfn_template/package.yml" \
-          --stack-name $(serviceName)-$(Build.SourceBranchName) \
+          --stack-name $STACK_NAME-$(Build.SourceBranchName) \
           --parameter-overrides \
             paramEnvironment=$(environment) \
             paramAccountPrefix=$(awsPrefix) \

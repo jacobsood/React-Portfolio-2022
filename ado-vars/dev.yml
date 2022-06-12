@@ -1,6 +1,6 @@
 variables:
   environment: dev
-  serviceName: service_name
+  serviceName: hrithviksood.me
   awsPrefix: aws_prefix
   awsRoleName: aws_role_name
   awsRegion: ap-southeast-2

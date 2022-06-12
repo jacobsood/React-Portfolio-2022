@@ -1,6 +1,6 @@
 variables:
   environment: prod
-  serviceName: serverless-service-name
+  serviceName: hrithviksood.me
   awsPrefix: aws-prefix
   awsRoleName: aws-role-name
   awsRegion: ap-southeast-2
